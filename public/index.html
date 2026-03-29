@@ -85,6 +85,30 @@ tr:hover td{background:rgba(108,99,255,.06)}
 .search-box{background:var(--card);color:var(--text);border:1px solid var(--brd);border-radius:8px;padding:8px 14px;font-size:.83rem;width:280px}
 .search-box:focus{outline:none;border-color:var(--acc)}
 
+/* Comparativo card */
+.comp-card{background:var(--card);border-radius:12px;border:1px solid var(--brd);padding:20px;margin-bottom:22px;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:16px;position:relative;overflow:hidden}
+.comp-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--acc),var(--acc2),var(--acc5))}
+.comp-title{grid-column:1/-1;font-size:.82rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;display:flex;align-items:center;gap:8px}
+.comp-block{text-align:center;padding:12px 8px;background:var(--card2);border-radius:10px;border:1px solid var(--brd)}
+.comp-block .cb-label{font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+.comp-block .cb-val{font-size:1.1rem;font-weight:800;color:#fff}
+.comp-block .cb-sub{font-size:.72rem;color:var(--muted);margin-top:3px}
+.comp-block .cb-badge{display:inline-flex;align-items:center;gap:3px;border-radius:20px;padding:3px 10px;font-size:.75rem;font-weight:700;margin-top:8px}
+.cb-badge.up{background:rgba(107,203,119,.15);color:#6bcb77}
+.cb-badge.down{background:rgba(255,107,107,.15);color:#ff6b6b}
+.cb-badge.neutral{background:rgba(148,163,184,.15);color:#94a3b8}
+.comp-bar{grid-column:1/-1;margin-top:8px}
+.comp-bar-label{font-size:.72rem;color:var(--muted);margin-bottom:6px}
+.comp-bar-track{background:var(--card2);border-radius:20px;height:8px;overflow:hidden;display:flex;gap:2px}
+.comp-bar-2025{background:#6c63ff;border-radius:20px 0 0 20px;transition:width .8s ease}
+.comp-bar-2026{background:#00d4ff;border-radius:0 20px 20px 0;transition:width .8s ease}
+.comp-legend{display:flex;gap:16px;margin-top:6px;font-size:.72rem;color:var(--muted)}
+.comp-legend span{display:flex;align-items:center;gap:5px}
+.comp-legend span::before{content:'';width:10px;height:10px;border-radius:50%;display:inline-block}
+.comp-legend .l25::before{background:#6c63ff}
+.comp-legend .l26::before{background:#00d4ff}
+@media(max-width:768px){.comp-card{grid-template-columns:1fr 1fr}}
+
 @media(max-width:768px){
   .grid-2,.grid-3{grid-template-columns:1fr}
   .main{padding:12px}
@@ -148,6 +172,41 @@ tr:hover td{background:rgba(108,99,255,.06)}
     <div class="kpi c4"><div class="kpi-icon">📋</div><div class="kpi-val" id="kv-ped">—</div><div class="kpi-label">Pedidos</div></div>
     <div class="kpi c5"><div class="kpi-icon">🎯</div><div class="kpi-val" id="kv-ticket">—</div><div class="kpi-label">Ticket Médio/Peça</div></div>
     <div class="kpi c6"><div class="kpi-icon">📆</div><div class="kpi-val" id="kv-ultimo">—</div><div class="kpi-label">Último Pedido</div></div>
+  </div>
+
+  <!-- COMPARATIVO CARD -->
+  <div class="comp-card" id="comp-card">
+    <div class="comp-title">📊 Comparativo 2025 vs 2026 <span id="comp-periodo" style="color:var(--acc2);font-size:.75rem"></span></div>
+    <div class="comp-block">
+      <div class="cb-label">Faturamento 2025</div>
+      <div class="cb-val" id="cc-fat25">—</div>
+      <div class="cb-sub" id="cc-fat25-sub"></div>
+    </div>
+    <div class="comp-block">
+      <div class="cb-label">Faturamento 2026</div>
+      <div class="cb-val" id="cc-fat26">—</div>
+      <div class="cb-sub" id="cc-fat26-sub"></div>
+      <div class="cb-badge" id="cc-fat-badge"></div>
+    </div>
+    <div class="comp-block">
+      <div class="cb-label">Peças 2025</div>
+      <div class="cb-val" id="cc-pec25">—</div>
+      <div class="cb-sub" id="cc-pec25-sub"></div>
+    </div>
+    <div class="comp-block">
+      <div class="cb-label">Peças 2026</div>
+      <div class="cb-val" id="cc-pec26">—</div>
+      <div class="cb-sub" id="cc-pec26-sub"></div>
+      <div class="cb-badge" id="cc-pec-badge"></div>
+    </div>
+    <div class="comp-bar">
+      <div class="comp-bar-label">Proporção do faturamento: <span id="cc-bar-label"></span></div>
+      <div class="comp-bar-track">
+        <div class="comp-bar-2025" id="cc-bar25" style="width:50%"></div>
+        <div class="comp-bar-2026" id="cc-bar26" style="width:50%"></div>
+      </div>
+      <div class="comp-legend"><span class="l25">2025</span><span class="l26">2026</span></div>
+    </div>
   </div>
 
   <div class="year-pills" id="year-pills"></div>
@@ -400,6 +459,9 @@ function renderVendas(){
   document.getElementById('kv-ticket').textContent='R$ '+ticket.toFixed(2);
   document.getElementById('kv-ultimo').textContent=last?`${MESES[last.mes-1]}/${last.ano}`:'—';
 
+  // ── COMPARATIVO 2025 vs 2026 ──────────────────────────────────────────────
+  renderComparativo();
+
   // by year
   const byY={};
   d.forEach(r=>{ if(!byY[r.ano]) byY[r.ano]=0; byY[r.ano]+=r.total; });
@@ -430,6 +492,63 @@ function renderVendas(){
   d.forEach(r=>{ if(!byYQ[r.ano]) byYQ[r.ano]=0; byYQ[r.ano]+=r.qtd; });
   const qKeys=Object.keys(byYQ).sort();
   mkChart('cPecas',{type:'bar',data:{labels:qKeys,datasets:[{data:qKeys.map(y=>byYQ[y]),backgroundColor:'#6bcb77cc',borderRadius:6}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>v.toLocaleString('pt-BR')}}}}});
+}
+
+// ── COMPARATIVO 2025 vs 2026 ────────────────────────────────────────────────
+function renderComparativo(){
+  // sempre usa todos os dados brutos para o comparativo (não filtrado por ano)
+  const all = RAW.sales;
+  const mAtual = new Date().getMonth()+1; // mês atual
+
+  // pega apenas meses já ocorridos em 2026 (para comparar mesmo período em 2025)
+  const meses2026 = [...new Set(all.filter(r=>r.ano===2026).map(r=>r.mes))].sort((a,b)=>a-b);
+  const ultimoMes2026 = meses2026.length > 0 ? Math.max(...meses2026) : mAtual;
+
+  // filtra ambos os anos pelo mesmo período (Jan até último mês disponível em 2026)
+  const d25 = all.filter(r=>r.ano===2025 && r.mes<=ultimoMes2026);
+  const d26 = all.filter(r=>r.ano===2026);
+  const d25Full = all.filter(r=>r.ano===2025);
+
+  const fat25 = d25.reduce((s,r)=>s+r.total,0);
+  const fat26 = d26.reduce((s,r)=>s+r.total,0);
+  const fat25Full = d25Full.reduce((s,r)=>s+r.total,0);
+  const pec25 = d25.reduce((s,r)=>s+r.qtd,0);
+  const pec26 = d26.reduce((s,r)=>s+r.qtd,0);
+
+  const varFat = fat25>0 ? ((fat26-fat25)/fat25*100) : 0;
+  const varPec = pec25>0 ? ((pec26-pec25)/pec25*100) : 0;
+
+  const badge=(val)=>{
+    if(val>0) return `<div class="cb-badge up">▲ +${val.toFixed(1)}%</div>`;
+    if(val<0) return `<div class="cb-badge down">▼ ${val.toFixed(1)}%</div>`;
+    return `<div class="cb-badge neutral">→ 0%</div>`;
+  };
+
+  const periodoLabel = meses2026.length>0
+    ? `Jan–${MESES[ultimoMes2026-1]} (mesmo período)`
+    : 'período atual';
+
+  document.getElementById('comp-periodo').textContent = periodoLabel;
+  document.getElementById('cc-fat25').textContent = fmt0(fat25);
+  document.getElementById('cc-fat25-sub').textContent = `Jan–${MESES[ultimoMes2026-1]}`;
+  document.getElementById('cc-fat26').textContent = fmt0(fat26);
+  document.getElementById('cc-fat26-sub').textContent = `Jan–${MESES[ultimoMes2026-1]}`;
+  document.getElementById('cc-fat-badge').outerHTML = `<div class="cb-badge ${varFat>0?'up':varFat<0?'down':'neutral'}" id="cc-fat-badge">${varFat>0?'▲ +':'▼ '}${varFat.toFixed(1)}% vs 2025</div>`;
+
+  document.getElementById('cc-pec25').textContent = pec25.toLocaleString('pt-BR');
+  document.getElementById('cc-pec25-sub').textContent = 'peças';
+  document.getElementById('cc-pec26').textContent = pec26.toLocaleString('pt-BR');
+  document.getElementById('cc-pec26-sub').textContent = 'peças';
+  document.getElementById('cc-pec-badge').outerHTML = `<div class="cb-badge ${varPec>0?'up':varPec<0?'down':'neutral'}" id="cc-pec-badge">${varPec>0?'▲ +':'▼ '}${varPec.toFixed(1)}% vs 2025</div>`;
+
+  // barra proporcional
+  const total = fat25+fat26;
+  const pct25 = total>0 ? (fat25/total*100) : 50;
+  const pct26 = total>0 ? (fat26/total*100) : 50;
+  document.getElementById('cc-bar25').style.width = pct25+'%';
+  document.getElementById('cc-bar26').style.width = pct26+'%';
+  document.getElementById('cc-bar-label').textContent =
+    `2025: R$ ${fmt0(fat25)} (${pct25.toFixed(0)}%) · 2026: R$ ${fmt0(fat26)} (${pct26.toFixed(0)}%)`;
 }
 
 // ── PRODUÇÃO ──────────────────────────────────────────────────────────────────
