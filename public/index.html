@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard — Controle de Facção</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+:root{--bg:#0f1117;--card:#1a1d2e;--card2:#252840;--acc:#6c63ff;--acc2:#00d4ff;--acc3:#ff6b6b;--acc4:#ffd93d;--acc5:#6bcb77;--text:#e2e8f0;--muted:#94a3b8;--brd:#2d3148}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh}
+
+/* TOPBAR */
+.topbar{background:linear-gradient(135deg,#1a1d2e,#252840);border-bottom:1px solid var(--brd);padding:14px 24px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.topbar h1{font-size:1.3rem;font-weight:800;background:linear-gradient(135deg,var(--acc),var(--acc2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.topbar .meta{font-size:.75rem;color:var(--muted);margin-top:2px}
+.sync-info{display:flex;align-items:center;gap:10px;font-size:.78rem;color:var(--muted)}
+.sync-dot{width:8px;height:8px;border-radius:50%;background:#6bcb77;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.btn-refresh{background:var(--acc);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:.8rem;cursor:pointer;display:flex;align-items:center;gap:6px;transition:.2s}
+.btn-refresh:hover{background:#5850e8}
+.btn-refresh.loading{opacity:.6;pointer-events:none}
+
+/* CONTROLS */
+.controls{background:var(--card);border-bottom:1px solid var(--brd);padding:12px 24px;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.tab-nav{display:flex;gap:4px;flex-wrap:wrap}
+.tab-btn{background:transparent;color:var(--muted);border:1px solid var(--brd);border-radius:8px;padding:7px 14px;font-size:.82rem;cursor:pointer;transition:.2s}
+.tab-btn.active,.tab-btn:hover{background:var(--acc);color:#fff;border-color:var(--acc)}
+.filters{display:flex;gap:8px;margin-left:auto;flex-wrap:wrap}
+select{background:var(--card2);color:var(--text);border:1px solid var(--brd);border-radius:8px;padding:7px 12px;font-size:.82rem;cursor:pointer}
+select:focus{outline:none;border-color:var(--acc)}
+
+/* MAIN */
+.main{padding:20px 24px;max-width:1600px;margin:0 auto}
+.section{display:none}.section.active{display:block}
+
+/* KPIs */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:14px;margin-bottom:22px}
+.kpi{background:var(--card);border-radius:12px;padding:18px;border:1px solid var(--brd);position:relative;overflow:hidden;transition:.2s}
+.kpi:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.3)}
+.kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:3px}
+.kpi.c1::before{background:linear-gradient(90deg,var(--acc),var(--acc2))}
+.kpi.c2::before{background:linear-gradient(90deg,var(--acc5),var(--acc2))}
+.kpi.c3::before{background:linear-gradient(90deg,var(--acc4),var(--acc3))}
+.kpi.c4::before{background:linear-gradient(90deg,var(--acc3),#ff8a65)}
+.kpi.c5::before{background:linear-gradient(90deg,#a855f7,var(--acc))}
+.kpi.c6::before{background:linear-gradient(90deg,var(--acc2),var(--acc5))}
+.kpi-icon{font-size:1.6rem;margin-bottom:6px}
+.kpi-val{font-size:1.4rem;font-weight:800;color:#fff}
+.kpi-label{font-size:.72rem;color:var(--muted);margin-top:3px;text-transform:uppercase;letter-spacing:.5px}
+
+/* Year pills */
+.year-pills{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px}
+.year-pill{background:var(--card);border:1px solid var(--brd);border-radius:20px;padding:6px 16px;cursor:pointer;font-size:.82rem;transition:.2s;text-align:center}
+.year-pill:hover,.year-pill.active{background:var(--acc);border-color:var(--acc);color:#fff}
+.year-pill span{display:block;font-size:.7rem;color:var(--muted);margin-top:1px}
+.year-pill.active span{color:rgba(255,255,255,.7)}
+
+/* Charts */
+.grid-2{display:grid;grid-template-columns:repeat(auto-fit,minmax(460px,1fr));gap:18px;margin-bottom:18px}
+.grid-3{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px;margin-bottom:18px}
+.chart-card{background:var(--card);border-radius:12px;padding:20px;border:1px solid var(--brd)}
+.chart-card h3{font-size:.82rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:14px;display:flex;align-items:center;gap:6px}
+.chart-card canvas{max-height:270px}
+.chart-card.tall canvas{max-height:340px}
+
+/* Table */
+.tbl-container{max-height:480px;overflow-y:auto}
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.8rem}
+th{background:var(--card2);color:var(--muted);padding:9px 12px;text-align:left;font-weight:600;text-transform:uppercase;font-size:.7rem;letter-spacing:.5px;position:sticky;top:0;z-index:1}
+td{padding:7px 12px;border-bottom:1px solid var(--brd)}
+tr:hover td{background:rgba(108,99,255,.06)}
+.badge-e{border-radius:6px;padding:2px 8px;font-size:.7rem;font-weight:700}
+.money{color:var(--acc5);font-weight:600}
+.qty{color:var(--acc2)}
+
+/* Loading */
+#loader{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:999;gap:16px}
+.spinner{width:44px;height:44px;border:4px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+#loader p{color:var(--muted);font-size:.9rem}
+
+/* Search */
+.search-box{background:var(--card);color:var(--text);border:1px solid var(--brd);border-radius:8px;padding:8px 14px;font-size:.83rem;width:280px}
+.search-box:focus{outline:none;border-color:var(--acc)}
+
+@media(max-width:768px){
+  .grid-2,.grid-3{grid-template-columns:1fr}
+  .main{padding:12px}
+  .kpis{grid-template-columns:repeat(2,1fr)}
+  .filters{margin-left:0}
+}
+</style>
+</head>
+<body>
+
+<div id="loader">
+  <div class="spinner"></div>
+  <p>Carregando dados da planilha...</p>
+</div>
+
+<div id="app" style="display:none">
+
+<div class="topbar">
+  <div>
+    <h1>🧵 Controle de Facção</h1>
+    <div class="meta" id="meta-total">Carregando...</div>
+  </div>
+  <div class="sync-info">
+    <div class="sync-dot"></div>
+    <span id="sync-label">Sincronizando...</span>
+    <button class="btn-refresh" id="btnRefresh" onclick="manualRefresh()">
+      🔄 Atualizar agora
+    </button>
+  </div>
+</div>
+
+<div class="controls">
+  <div class="tab-nav">
+    <button class="tab-btn active" onclick="showSection('vendas',this)">📦 Vendas</button>
+    <button class="tab-btn" onclick="showSection('producao',this)">🏭 Produção</button>
+    <button class="tab-btn" onclick="showSection('despesas',this)">💸 Despesas</button>
+    <button class="tab-btn" onclick="showSection('levantamento',this)">📊 Levantamento</button>
+    <button class="tab-btn" onclick="showSection('pedidos',this)">📋 Pedidos</button>
+  </div>
+  <div class="filters">
+    <select id="fAno" onchange="applyFilters()">
+      <option value="">Todos os anos</option>
+    </select>
+    <select id="fEmp" onchange="applyFilters()">
+      <option value="">Todas as empresas</option>
+    </select>
+    <select id="fMes" onchange="applyFilters()">
+      <option value="">Todos os meses</option>
+    </select>
+  </div>
+</div>
+
+<div class="main">
+
+<!-- VENDAS -->
+<div id="sec-vendas" class="section active">
+  <div class="kpis">
+    <div class="kpi c1"><div class="kpi-icon">💰</div><div class="kpi-val" id="kv-fat">—</div><div class="kpi-label">Total Faturado</div></div>
+    <div class="kpi c2"><div class="kpi-icon">👗</div><div class="kpi-val" id="kv-pecas">—</div><div class="kpi-label">Peças Produzidas</div></div>
+    <div class="kpi c3"><div class="kpi-icon">🏢</div><div class="kpi-val" id="kv-emp">—</div><div class="kpi-label">Empresas</div></div>
+    <div class="kpi c4"><div class="kpi-icon">📋</div><div class="kpi-val" id="kv-ped">—</div><div class="kpi-label">Pedidos</div></div>
+    <div class="kpi c5"><div class="kpi-icon">🎯</div><div class="kpi-val" id="kv-ticket">—</div><div class="kpi-label">Ticket Médio/Peça</div></div>
+    <div class="kpi c6"><div class="kpi-icon">📆</div><div class="kpi-val" id="kv-ultimo">—</div><div class="kpi-label">Último Pedido</div></div>
+  </div>
+
+  <div class="year-pills" id="year-pills"></div>
+
+  <div class="grid-2">
+    <div class="chart-card tall"><h3>📈 Faturamento por Ano</h3><canvas id="cAnual"></canvas></div>
+    <div class="chart-card tall"><h3>📅 Evolução Mensal (todos os anos)</h3><canvas id="cMensal"></canvas></div>
+  </div>
+  <div class="grid-2">
+    <div class="chart-card"><h3>🏢 Top Empresas</h3><canvas id="cEmpresas"></canvas></div>
+    <div class="chart-card"><h3>🍩 Participação por Empresa</h3><canvas id="cRosca"></canvas></div>
+  </div>
+  <div class="grid-2">
+    <div class="chart-card"><h3>👗 Top 15 Modelos</h3><canvas id="cModelos"></canvas></div>
+    <div class="chart-card"><h3>📦 Peças por Ano</h3><canvas id="cPecas"></canvas></div>
+  </div>
+</div>
+
+<!-- PRODUÇÃO -->
+<div id="sec-producao" class="section">
+  <div class="kpis">
+    <div class="kpi c1"><div class="kpi-icon">🏭</div><div class="kpi-val" id="kp-total">—</div><div class="kpi-label">Total de Peças</div></div>
+    <div class="kpi c2"><div class="kpi-icon">📅</div><div class="kpi-val" id="kp-ano">—</div><div class="kpi-label">Peças Ano Atual</div></div>
+    <div class="kpi c3"><div class="kpi-icon">📈</div><div class="kpi-val" id="kp-media">—</div><div class="kpi-label">Média Mensal</div></div>
+  </div>
+  <div class="grid-2">
+    <div class="chart-card tall"><h3>📊 Peças por Mês/Ano</h3><canvas id="cPecasMes"></canvas></div>
+    <div class="chart-card tall"><h3>🏢 Peças por Empresa (acumulado)</h3><canvas id="cPecasEmp"></canvas></div>
+  </div>
+  <div class="chart-card" style="margin-bottom:18px"><h3>📅 Diárias Semanais por Mês</h3><canvas id="cDiarias"></canvas></div>
+</div>
+
+<!-- DESPESAS -->
+<div id="sec-despesas" class="section">
+  <div class="kpis">
+    <div class="kpi c2"><div class="kpi-icon">💵</div><div class="kpi-val" id="kd-ent">—</div><div class="kpi-label">Total Entradas</div></div>
+    <div class="kpi c4"><div class="kpi-icon">💸</div><div class="kpi-val" id="kd-desp">—</div><div class="kpi-label">Total Despesas</div></div>
+    <div class="kpi c1"><div class="kpi-icon">💹</div><div class="kpi-val" id="kd-luc">—</div><div class="kpi-label">Lucro Bruto</div></div>
+    <div class="kpi c5"><div class="kpi-icon">📊</div><div class="kpi-val" id="kd-margin">—</div><div class="kpi-label">Margem Média</div></div>
+  </div>
+  <div class="grid-2">
+    <div class="chart-card tall"><h3>💰 Entradas vs Despesas vs Lucro</h3><canvas id="cDesp"></canvas></div>
+    <div class="chart-card tall"><h3>🍩 Composição das Despesas</h3><canvas id="cDespComp"></canvas></div>
+  </div>
+  <div class="chart-card" style="margin-bottom:18px">
+    <h3>📋 Detalhamento por Mês</h3>
+    <div class="tbl-wrap"><table id="tDesp">
+      <thead><tr><th>Mês</th><th>Entradas</th><th>Energia</th><th>Água</th><th>Internet</th><th>Diaristas</th><th>Manutenção</th><th>Materiais</th><th>Total Desp.</th><th>Lucro</th></tr></thead>
+      <tbody id="tbDesp"></tbody>
+    </table></div>
+  </div>
+</div>
+
+<!-- LEVANTAMENTO -->
+<div id="sec-levantamento" class="section">
+  <div class="kpis">
+    <div class="kpi c1"><div class="kpi-icon">📈</div><div class="kpi-val" id="kl-ganhos">—</div><div class="kpi-label">Total Ganhos</div></div>
+    <div class="kpi c4"><div class="kpi-icon">👩</div><div class="kpi-val" id="kl-diar">—</div><div class="kpi-label">Total Diárias</div></div>
+    <div class="kpi c2"><div class="kpi-icon">✅</div><div class="kpi-val" id="kl-liq">—</div><div class="kpi-label">Ganhos Líquidos</div></div>
+    <div class="kpi c5"><div class="kpi-icon">🏭</div><div class="kpi-val" id="kl-fac">—</div><div class="kpi-label">Lucro Facção</div></div>
+  </div>
+  <div class="grid-2">
+    <div class="chart-card tall"><h3>📊 Ganhos vs Diárias vs Líquido</h3><canvas id="cLev"></canvas></div>
+    <div class="chart-card tall"><h3>💹 Lucro Facção por Mês</h3><canvas id="cLevFac"></canvas></div>
+  </div>
+</div>
+
+<!-- PEDIDOS -->
+<div id="sec-pedidos" class="section">
+  <div style="margin-bottom:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <input class="search-box" id="searchQ" placeholder="🔍 Buscar por empresa, modelo, referência..." oninput="filterTable()">
+    <span id="tbl-count" style="color:var(--muted);font-size:.8rem"></span>
+  </div>
+  <div class="chart-card">
+    <h3>📋 Todos os Pedidos</h3>
+    <div class="tbl-container"><div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Ano</th><th>Mês</th><th>Empresa</th><th>Ref.</th><th>Modelo</th><th>Val.Unit.</th><th>Qtd</th><th>Total</th><th>Pago</th></tr></thead>
+        <tbody id="tbPedidos"></tbody>
+      </table>
+    </div></div>
+  </div>
+</div>
+
+</div><!-- .main -->
+</div><!-- #app -->
+
+<script>
+const COLORS=['#6c63ff','#00d4ff','#ff6b6b','#ffd93d','#6bcb77','#a855f7','#f97316','#ec4899','#14b8a6','#84cc16','#fb7185','#38bdf8'];
+const MESES=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+
+Chart.defaults.color='#94a3b8';
+Chart.defaults.borderColor='#2d3148';
+
+let RAW={sales:[],despesas:[],diarias:[],levantamento:[]};
+let charts={};
+let filteredSales=[];
+
+// ── fetch ────────────────────────────────────────────────────────────────────
+async function fetchData(){
+  const res = await fetch('/api/data');
+  if(!res.ok) throw new Error('HTTP '+res.status);
+  return res.json();
+}
+
+async function init(){
+  try{
+    const data = await fetchData();
+    RAW = data;
+    populateFilters();
+    applyFilters();
+    updateSyncLabel(data.lastUpdated, data.cacheAge);
+    document.getElementById('loader').style.display='none';
+    document.getElementById('app').style.display='block';
+    // auto-refresh every 30 min
+    setInterval(async()=>{
+      try{
+        const d=await fetchData();
+        RAW=d;
+        applyFilters();
+        updateSyncLabel(d.lastUpdated,d.cacheAge);
+      }catch(e){console.warn('Auto-refresh falhou',e)}
+    }, 30*60*1000);
+  }catch(e){
+    document.getElementById('loader').innerHTML=`<div style="color:#ff6b6b;text-align:center"><div style="font-size:2rem">⚠️</div><p style="margin-top:12px">Erro ao carregar dados</p><p style="font-size:.8rem;color:#94a3b8;margin-top:6px">${e.message}</p><button onclick="init()" style="margin-top:16px;background:#6c63ff;color:#fff;border:none;border-radius:8px;padding:8px 20px;cursor:pointer">Tentar novamente</button></div>`;
+  }
+}
+
+async function manualRefresh(){
+  const btn=document.getElementById('btnRefresh');
+  btn.classList.add('loading');
+  btn.textContent='🔄 Atualizando...';
+  try{
+    await fetch('/api/refresh');
+    const d=await fetchData();
+    RAW=d;
+    applyFilters();
+    updateSyncLabel(d.lastUpdated,d.cacheAge);
+  }catch(e){alert('Erro ao atualizar: '+e.message)}
+  btn.classList.remove('loading');
+  btn.innerHTML='🔄 Atualizar agora';
+}
+
+function updateSyncLabel(lu,age){
+  const s=document.getElementById('sync-label');
+  s.textContent = lu ? `Atualizado: ${lu}` : 'Sincronizado';
+}
+
+// ── filters ──────────────────────────────────────────────────────────────────
+function populateFilters(){
+  const anos=[...new Set(RAW.sales.map(r=>r.ano))].sort();
+  const emps=[...new Set(RAW.sales.map(r=>r.empresa))].sort();
+  const selA=document.getElementById('fAno');
+  const selE=document.getElementById('fEmp');
+  const selM=document.getElementById('fMes');
+  const savedA=selA.value, savedE=selE.value, savedM=selM.value;
+  selA.innerHTML='<option value="">Todos os anos</option>'+anos.map(a=>`<option value="${a}">${a}</option>`).join('');
+  selE.innerHTML='<option value="">Todas as empresas</option>'+emps.map(e=>`<option value="${e}">${e}</option>`).join('');
+  selM.innerHTML='<option value="">Todos os meses</option>'+MESES.map((m,i)=>`<option value="${i+1}">${m}</option>`).join('');
+  if(savedA) selA.value=savedA;
+  if(savedE) selE.value=savedE;
+  if(savedM) selM.value=savedM;
+}
+
+function applyFilters(){
+  const ano=document.getElementById('fAno').value;
+  const emp=document.getElementById('fEmp').value;
+  const mes=document.getElementById('fMes').value;
+  filteredSales=RAW.sales.filter(r=>{
+    if(ano && r.ano!=ano) return false;
+    if(emp && r.empresa!==emp) return false;
+    if(mes && r.mes!=mes) return false;
+    return true;
+  });
+  renderVendas();
+  renderProducao();
+  renderDespesas();
+  renderLevantamento();
+  // update table if visible
+  if(document.getElementById('sec-pedidos').classList.contains('active')) buildTable(filteredSales);
+  // update year pills
+  buildYearPills(ano);
+  // meta
+  const fat=filteredSales.reduce((s,r)=>s+r.total,0);
+  document.getElementById('meta-total').textContent=`${filteredSales.length} pedidos · R$ ${fmt0(fat)} faturado`;
+}
+
+// ── section switch ────────────────────────────────────────────────────────────
+function showSection(name,btn){
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('sec-'+name).classList.add('active');
+  btn.classList.add('active');
+  if(name==='pedidos') buildTable(filteredSales);
+}
+
+// ── year pills ─────────────────────────────────────────────────────────────
+function buildYearPills(currentAno){
+  const anos=[...new Set(RAW.sales.map(r=>r.ano))].sort();
+  const byY={};
+  RAW.sales.forEach(r=>{ if(!byY[r.ano]) byY[r.ano]={t:0,q:0}; byY[r.ano].t+=r.total; byY[r.ano].q+=r.qtd; });
+  document.getElementById('year-pills').innerHTML=anos.map(y=>`
+    <div class="year-pill ${currentAno==y?'active':''}" onclick="setYearFilter(${y})">
+      <strong>${y}</strong>
+      <span>R$ ${fmt0(byY[y].t)}</span>
+    </div>`).join('');
+}
+
+function setYearFilter(y){
+  const sel=document.getElementById('fAno');
+  sel.value = (sel.value==y ? '' : y);
+  applyFilters();
+}
+
+// ── formatters ────────────────────────────────────────────────────────────────
+function fmt(v){ return 'R$ '+Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function fmt0(v){ return 'R$ '+Number(v).toLocaleString('pt-BR',{minimumFractionDigits:0,maximumFractionDigits:0}); }
+function empColor(e){ const i=([...new Set(RAW.sales.map(r=>r.empresa))].sort()).indexOf(e); return COLORS[i%COLORS.length]; }
+
+// ── chart helpers ─────────────────────────────────────────────────────────────
+function mkChart(id,cfg){
+  if(charts[id]) charts[id].destroy();
+  const ctx=document.getElementById(id);
+  if(!ctx) return;
+  charts[id]=new Chart(ctx,cfg);
+}
+
+const CHART_OPTS={
+  bar:(cb)=>({responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>fmt(c.raw)}}},scales:{y:{ticks:{callback:v=>fmt0(v)}}},...(cb||{})}),
+  hbar:(cb)=>({indexAxis:'y',responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>fmt(c.raw)}}},scales:{x:{ticks:{callback:v=>fmt0(v)}}},...(cb||{})}),
+  line:(cb)=>({responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>fmt(c.raw)}}},scales:{y:{ticks:{callback:v=>fmt0(v)}}},...(cb||{})}),
+  doughnut:()=>({responsive:true,plugins:{legend:{position:'bottom',labels:{font:{size:11}}},tooltip:{callbacks:{label:c=>c.label+': '+fmt(c.raw)}}}}),
+};
+
+// ── VENDAS ────────────────────────────────────────────────────────────────────
+function renderVendas(){
+  const d=filteredSales;
+  const fat=d.reduce((s,r)=>s+r.total,0);
+  const pecas=d.reduce((s,r)=>s+r.qtd,0);
+  const emps=new Set(d.map(r=>r.empresa)).size;
+  const ticket=pecas>0?fat/pecas:0;
+  // last entry
+  const sorted=[...d].sort((a,b)=>b.ano-a.ano||b.mes-a.mes);
+  const last=sorted[0];
+
+  document.getElementById('kv-fat').textContent=fmt0(fat);
+  document.getElementById('kv-pecas').textContent=pecas.toLocaleString('pt-BR');
+  document.getElementById('kv-emp').textContent=emps;
+  document.getElementById('kv-ped').textContent=d.length;
+  document.getElementById('kv-ticket').textContent='R$ '+ticket.toFixed(2);
+  document.getElementById('kv-ultimo').textContent=last?`${MESES[last.mes-1]}/${last.ano}`:'—';
+
+  // by year
+  const byY={};
+  d.forEach(r=>{ if(!byY[r.ano]) byY[r.ano]=0; byY[r.ano]+=r.total; });
+  const yKeys=Object.keys(byY).sort();
+  mkChart('cAnual',{type:'bar',data:{labels:yKeys,datasets:[{data:yKeys.map(y=>byY[y]),backgroundColor:yKeys.map((_,i)=>COLORS[i%COLORS.length]+'cc'),borderRadius:6}]},options:CHART_OPTS.bar()});
+
+  // monthly evolution
+  const byMY={};
+  d.forEach(r=>{ const k=`${String(r.mes).padStart(2,'0')}/${r.ano}`; if(!byMY[k]) byMY[k]={mes:r.mes,ano:r.ano,v:0}; byMY[k].v+=r.total; });
+  const mKeys=Object.values(byMY).sort((a,b)=>a.ano-b.ano||a.mes-b.mes);
+  mkChart('cMensal',{type:'line',data:{labels:mKeys.map(k=>MESES[k.mes-1]+'/'+k.ano),datasets:[{data:mKeys.map(k=>k.v),borderColor:'#6c63ff',backgroundColor:'rgba(108,99,255,.1)',fill:true,tension:.4,pointRadius:mKeys.length>60?0:2}]},options:CHART_OPTS.line()});
+
+  // by empresa
+  const byE={};
+  d.forEach(r=>{ if(!byE[r.empresa]) byE[r.empresa]=0; byE[r.empresa]+=r.total; });
+  const eArr=Object.entries(byE).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  mkChart('cEmpresas',{type:'bar',data:{labels:eArr.map(e=>e[0]),datasets:[{data:eArr.map(e=>e[1]),backgroundColor:eArr.map(e=>empColor(e[0])+'cc'),borderRadius:4}]},options:CHART_OPTS.hbar()});
+  mkChart('cRosca',{type:'doughnut',data:{labels:eArr.map(e=>e[0]),datasets:[{data:eArr.map(e=>e[1]),backgroundColor:eArr.map(e=>empColor(e[0])),borderWidth:2,borderColor:'#1a1d2e'}]},options:CHART_OPTS.doughnut()});
+
+  // by modelo
+  const byM={};
+  d.forEach(r=>{ if(!byM[r.modelo]) byM[r.modelo]=0; byM[r.modelo]+=r.total; });
+  const mArr=Object.entries(byM).sort((a,b)=>b[1]-a[1]).slice(0,15);
+  mkChart('cModelos',{type:'bar',data:{labels:mArr.map(m=>m[0].substring(0,22)),datasets:[{data:mArr.map(m=>m[1]),backgroundColor:'#00d4ffcc',borderRadius:4}]},options:CHART_OPTS.hbar()});
+
+  // pecas by year
+  const byYQ={};
+  d.forEach(r=>{ if(!byYQ[r.ano]) byYQ[r.ano]=0; byYQ[r.ano]+=r.qtd; });
+  const qKeys=Object.keys(byYQ).sort();
+  mkChart('cPecas',{type:'bar',data:{labels:qKeys,datasets:[{data:qKeys.map(y=>byYQ[y]),backgroundColor:'#6bcb77cc',borderRadius:6}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>v.toLocaleString('pt-BR')}}}}});
+}
+
+// ── PRODUÇÃO ──────────────────────────────────────────────────────────────────
+function renderProducao(){
+  const d=filteredSales;
+  const total=d.reduce((s,r)=>s+r.qtd,0);
+  const anoAtual=new Date().getFullYear();
+  const anoAtualPcs=d.filter(r=>r.ano===anoAtual).reduce((s,r)=>s+r.qtd,0);
+  const meses=new Set(d.map(r=>`${r.ano}-${r.mes}`)).size;
+  const media=meses>0?Math.round(total/meses):0;
+
+  document.getElementById('kp-total').textContent=total.toLocaleString('pt-BR');
+  document.getElementById('kp-ano').textContent=anoAtualPcs.toLocaleString('pt-BR');
+  document.getElementById('kp-media').textContent=media.toLocaleString('pt-BR');
+
+  // peças por mês/ano (multi-line)
+  const anos=[...new Set(d.map(r=>r.ano))].sort();
+  const qtdDS=anos.map((y,i)=>({
+    label:String(y),
+    data:Array.from({length:12},(_,m)=>d.filter(r=>r.ano===y&&r.mes===m+1).reduce((s,r)=>s+r.qtd,0)),
+    borderColor:COLORS[i%COLORS.length],backgroundColor:COLORS[i%COLORS.length]+'33',
+    fill:false,tension:.4,pointRadius:2
+  }));
+  mkChart('cPecasMes',{type:'line',data:{labels:MESES,datasets:qtdDS},options:{responsive:true,plugins:{legend:{position:'bottom'}},scales:{y:{ticks:{callback:v=>v.toLocaleString('pt-BR')}}}}});
+
+  // peças por empresa
+  const byE={};
+  d.forEach(r=>{ if(!byE[r.empresa]) byE[r.empresa]=0; byE[r.empresa]+=r.qtd; });
+  const eArr=Object.entries(byE).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  mkChart('cPecasEmp',{type:'bar',data:{labels:eArr.map(e=>e[0]),datasets:[{data:eArr.map(e=>e[1]),backgroundColor:eArr.map(e=>empColor(e[0])+'cc'),borderRadius:4}]},options:{indexAxis:'y',responsive:true,plugins:{legend:{display:false}},scales:{x:{ticks:{callback:v=>v.toLocaleString('pt-BR')}}}}});
+
+  // diárias
+  if(RAW.diarias.length>0){
+    const dm=RAW.diarias;
+    mkChart('cDiarias',{type:'bar',data:{labels:dm.map(d=>d.mes.substring(0,3)),datasets:[
+      {label:'S1',data:dm.map(d=>d.s1),backgroundColor:'#6c63ffcc',borderRadius:3},
+      {label:'S2',data:dm.map(d=>d.s2),backgroundColor:'#00d4ffcc',borderRadius:3},
+      {label:'S3',data:dm.map(d=>d.s3),backgroundColor:'#6bcb77cc',borderRadius:3},
+      {label:'S4',data:dm.map(d=>d.s4),backgroundColor:'#ffd93dcc',borderRadius:3},
+    ]},options:{responsive:true,plugins:{legend:{position:'bottom'}},scales:{x:{stacked:true},y:{stacked:true}}}});
+  }
+}
+
+// ── DESPESAS ──────────────────────────────────────────────────────────────────
+function renderDespesas(){
+  const d=RAW.despesas;
+  const totE=d.reduce((s,r)=>s+r.entradas,0);
+  const totD=d.reduce((s,r)=>s+r.total_despesas,0);
+  const totL=totE-totD;
+  const margin=totE>0?((totL/totE)*100):0;
+
+  document.getElementById('kd-ent').textContent=fmt0(totE);
+  document.getElementById('kd-desp').textContent=fmt0(totD);
+  document.getElementById('kd-luc').textContent=fmt0(totL);
+  document.getElementById('kd-margin').textContent=margin.toFixed(1)+'%';
+
+  mkChart('cDesp',{type:'bar',data:{labels:d.map(r=>r.mes.substring(0,3)),datasets:[
+    {label:'Entradas',data:d.map(r=>r.entradas),backgroundColor:'#6bcb77cc',borderRadius:4},
+    {label:'Despesas',data:d.map(r=>r.total_despesas),backgroundColor:'#ff6b6bcc',borderRadius:4},
+    {label:'Lucro',data:d.map(r=>r.entradas-r.total_despesas),type:'line',borderColor:'#ffd93d',backgroundColor:'rgba(255,217,61,.1)',fill:true,tension:.4,yAxisID:'y'}
+  ]},options:{responsive:true,plugins:{legend:{position:'bottom'},tooltip:{callbacks:{label:c=>c.dataset.label+': '+fmt(c.raw)}}},scales:{y:{ticks:{callback:v=>fmt0(v)}}}}});
+
+  // composição
+  const comp={'Diaristas':d.reduce((s,r)=>s+r.diaristas,0),'Energia':d.reduce((s,r)=>s+r.energia,0),'Pró-Labore':d.reduce((s,r)=>s+r.prolabore,0),'Água':d.reduce((s,r)=>s+r.agua,0),'Internet':d.reduce((s,r)=>s+r.internet,0),'Manutenção':d.reduce((s,r)=>s+r.manut,0),'Materiais':d.reduce((s,r)=>s+r.materiais,0),'Guia':d.reduce((s,r)=>s+r.guia,0)};
+  const cArr=Object.entries(comp).filter(e=>e[1]>0).sort((a,b)=>b[1]-a[1]);
+  mkChart('cDespComp',{type:'doughnut',data:{labels:cArr.map(e=>e[0]),datasets:[{data:cArr.map(e=>e[1]),backgroundColor:COLORS.slice(0,cArr.length),borderWidth:2,borderColor:'#1a1d2e'}]},options:CHART_OPTS.doughnut()});
+
+  // table
+  document.getElementById('tbDesp').innerHTML=d.map(r=>`<tr>
+    <td>${r.mes}</td><td class="money">${fmt(r.entradas)}</td>
+    <td>${fmt(r.energia)}</td><td>${fmt(r.agua)}</td><td>${fmt(r.internet)}</td>
+    <td>${fmt(r.diaristas)}</td><td>${fmt(r.manut)}</td><td>${fmt(r.materiais)}</td>
+    <td style="color:var(--acc3)">${fmt(r.total_despesas)}</td>
+    <td class="money">${fmt(r.entradas-r.total_despesas)}</td>
+  </tr>`).join('');
+}
+
+// ── LEVANTAMENTO ──────────────────────────────────────────────────────────────
+function renderLevantamento(){
+  const d=RAW.levantamento;
+  const totG=d.reduce((s,r)=>s+r.ganhos,0);
+  const totD=d.reduce((s,r)=>s+r.diarias_val,0);
+  const totL=d.reduce((s,r)=>s+r.ganhos_liq,0);
+  const totF=d.reduce((s,r)=>s+r.lucro_fac,0);
+
+  document.getElementById('kl-ganhos').textContent=fmt0(totG);
+  document.getElementById('kl-diar').textContent=fmt0(totD);
+  document.getElementById('kl-liq').textContent=fmt0(totL);
+  document.getElementById('kl-fac').textContent=fmt0(totF);
+
+  mkChart('cLev',{type:'bar',data:{labels:d.map(r=>r.mes.substring(0,3)),datasets:[
+    {label:'Ganhos',data:d.map(r=>r.ganhos),backgroundColor:'#6bcb77cc',borderRadius:4},
+    {label:'Diárias',data:d.map(r=>r.diarias_val),backgroundColor:'#ff6b6bcc',borderRadius:4},
+    {label:'Líquido',data:d.map(r=>r.ganhos_liq),type:'line',borderColor:'#6c63ff',backgroundColor:'rgba(108,99,255,.1)',fill:true,tension:.4}
+  ]},options:{responsive:true,plugins:{legend:{position:'bottom'},tooltip:{callbacks:{label:c=>c.dataset.label+': '+fmt(c.raw)}}},scales:{y:{ticks:{callback:v=>fmt0(v)}}}}});
+
+  const luc=d.map(r=>r.lucro_fac);
+  mkChart('cLevFac',{type:'bar',data:{labels:d.map(r=>r.mes.substring(0,3)),datasets:[{data:luc,backgroundColor:luc.map(v=>v>0?'#6bcb77cc':'#ff6b6bcc'),borderRadius:4}]},options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>fmt(c.raw)}}},scales:{y:{ticks:{callback:v=>fmt0(v)}}}}});
+}
+
+// ── TABLE ─────────────────────────────────────────────────────────────────────
+function buildTable(data){
+  const q=(document.getElementById('searchQ').value||'').toLowerCase();
+  const rows=data.filter(r=>!q||r.empresa.toLowerCase().includes(q)||r.modelo.toLowerCase().includes(q)||(r.ref||'').toString().toLowerCase().includes(q)||String(r.ano).includes(q));
+  const sorted=[...rows].sort((a,b)=>b.ano-a.ano||b.mes-a.mes);
+  document.getElementById('tbl-count').textContent=`${sorted.length} registros`;
+  document.getElementById('tbPedidos').innerHTML=sorted.map(r=>`<tr>
+    <td>${r.ano}</td>
+    <td>${MESES[r.mes-1]||r.mes}</td>
+    <td><span class="badge-e" style="background:${empColor(r.empresa)}33;color:${empColor(r.empresa)}">${r.empresa}</span></td>
+    <td style="color:var(--muted)">${r.ref||'—'}</td>
+    <td>${r.modelo}</td>
+    <td>R$ ${Number(r.valor).toFixed(2)}</td>
+    <td class="qty">${Number(r.qtd).toLocaleString('pt-BR')}</td>
+    <td class="money">${fmt(r.total)}</td>
+    <td style="color:var(--muted);font-size:.75rem">${r.pago||'—'}</td>
+  </tr>`).join('');
+}
+
+function filterTable(){
+  buildTable(filteredSales);
+}
+
+init();
+</script>
+</body>
+</html>
