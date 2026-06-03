@@ -9,6 +9,7 @@ const PORT = process.env.PORT || 3000;
 const SHEET_ID = '1thhOQxlobQZxKmt6aMFcqa-0CJB3_swU';
 const SHEET_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=xlsx`;
 const CACHE_TTL = 30 * 60 * 1000; // 30 minutos
+const DOWNLOAD_TIMEOUT = 30 * 1000; // 30 segundos de timeout por requisição
 
 let cache = null;
 let cacheTime = 0;
@@ -34,20 +35,38 @@ function fixYear(y) {
   return n < 100 ? 2000 + n : n;
 }
 
-// ─── download XLSX ───────────────────────────────────────────────────────────
+// ─── download XLSX com timeout ───────────────────────────────────────────────
 function downloadBuffer(url, maxRedirects = 5) {
   return new Promise((resolve, reject) => {
     const mod = url.startsWith('https') ? https : http;
+
+    const timer = setTimeout(() => {
+      reject(new Error('Timeout ao baixar planilha (30s)'));
+    }, DOWNLOAD_TIMEOUT);
+
     mod.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, res => {
       if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location && maxRedirects > 0) {
+        clearTimeout(timer);
         return resolve(downloadBuffer(res.headers.location, maxRedirects - 1));
       }
-      if (res.statusCode !== 200) return reject(new Error(`HTTP ${res.statusCode}`));
+      if (res.statusCode !== 200) {
+        clearTimeout(timer);
+        return reject(new Error(`HTTP ${res.statusCode}`));
+      }
       const chunks = [];
       res.on('data', c => chunks.push(c));
-      res.on('end', () => resolve(Buffer.concat(chunks)));
-      res.on('error', reject);
-    }).on('error', reject);
+      res.on('end', () => {
+        clearTimeout(timer);
+        resolve(Buffer.concat(chunks));
+      });
+      res.on('error', err => {
+        clearTimeout(timer);
+        reject(err);
+      });
+    }).on('error', err => {
+      clearTimeout(timer);
+      reject(err);
+    });
   });
 }
 
@@ -67,19 +86,14 @@ function parseWorkbook(buf) {
     if (rows.length < 2) continue;
     const hdr = rows[0].map(h => safeStr(h).toUpperCase());
 
-    // detect column positions dynamically
     const iMes     = hdr.findIndex(h => h.startsWith('MÊS') || h === 'MES');
     const iAno     = hdr.findIndex(h => h === 'ANO');
     const iEmp     = hdr.findIndex(h => h.includes('EMPRESA'));
     const iRef     = hdr.findIndex(h => h.startsWith('REF'));
     const iMod     = hdr.findIndex(h => h.startsWith('MODEL'));
-    // valor: column index after REF/MODEL
     const iVal     = hdr.findIndex((h,i) => i > Math.max(iMod,iRef) && (h === 'VALOR' || h.startsWith('VALOR')));
-    // qtd: ENVIADAS / PECAS / QUANTIDADE / FACCAO col comes after valor
     const iQtd     = hdr.findIndex((h,i) => i > iVal && (h.includes('ENVIAD') || h === 'PECAS' || h.includes('QUANT') || h === 'FACCAO'));
-    // total
     const iTotal   = hdr.findIndex((h,i) => i > (iQtd>0?iQtd:iVal) && h === 'TOTAL');
-    // pago
     const iPago    = hdr.findIndex(h => h.startsWith('PAGO') || h.startsWith('RECEBIDO'));
 
     for (let r = 1; r < rows.length; r++) {
@@ -91,7 +105,6 @@ function parseWorkbook(buf) {
       const ref    = safeStr(row[iRef]);
       const modelo = safeStr(row[iMod]);
       const valor  = iVal >= 0 ? safeFloat(row[iVal]) : 0;
-      // for 2025/2026 qtd is QUANTIDADE col, not FACCAO
       let qtd = 0;
       if (['2025','2026'].includes(name)) {
         const iQ2 = hdr.findIndex((h,i) => i > iVal && h.includes('QUANT'));
@@ -192,17 +205,17 @@ async function loadData(force = false) {
     return cache;
   } catch (err) {
     console.error('[data] Erro ao baixar planilha:', err.message);
-    if (cache) return cache; // return stale cache on error
-    throw err;
+    if (cache) {
+      console.log('[data] Usando cache anterior como fallback.');
+      return cache;
+    }
+    // Retorna estrutura vazia para não travar o servidor
+    console.warn('[data] Nenhum cache disponível. Retornando dados vazios.');
+    return { sales: [], despesas: [], diarias: [], levantamento: [] };
   }
 }
 
-// pre-load on startup
-loadData().catch(console.error);
-// refresh every 30 min
-setInterval(() => loadData(true).catch(console.error), CACHE_TTL);
-
-// ─── routes ──────────────────────────────────────────────────────────────────
+// ─── startup: sobe o servidor PRIMEIRO, depois carrega dados ─────────────────
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/api/data', async (req, res) => {
@@ -223,6 +236,18 @@ app.get('/api/refresh', async (req, res) => {
   }
 });
 
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', uptime: process.uptime(), cached: !!cache, lastUpdated });
+});
+
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
-app.listen(PORT, () => console.log(`🚀 Dashboard rodando na porta ${PORT}`));
+// Sobe o servidor IMEDIATAMENTE — não espera o carregamento da planilha
+app.listen(PORT, () => {
+  console.log(`🚀 Dashboard rodando na porta ${PORT}`);
+  // Carrega os dados em background após o servidor estar pronto
+  loadData().catch(err => console.error('[startup] Erro ao carregar dados iniciais:', err.message));
+});
+
+// Refresh a cada 30 min
+setInterval(() => loadData(true).catch(console.error), CACHE_TTL);
