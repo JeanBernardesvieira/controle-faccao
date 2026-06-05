@@ -84,7 +84,18 @@ function parseWorkbook(buf) {
     if (!wb.SheetNames.includes(name)) continue;
     const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: null });
     if (rows.length < 2) continue;
-    const hdr = rows[0].map(h => safeStr(h).toUpperCase());
+
+    // Detectar o cabeçalho real: procurar a primeira linha que contenha MÊS/MES
+    // (algumas abas como 2026 têm uma linha de totais antes do cabeçalho)
+    let hdrRowIdx = 0;
+    for (let ri = 0; ri < Math.min(rows.length, 5); ri++) {
+      const candidate = rows[ri].map(h => safeStr(h).toUpperCase());
+      if (candidate.some(h => h.startsWith('MÊS') || h === 'MES')) {
+        hdrRowIdx = ri;
+        break;
+      }
+    }
+    const hdr = rows[hdrRowIdx].map(h => safeStr(h).toUpperCase());
 
     const iMes     = hdr.findIndex(h => h.startsWith('MÊS') || h === 'MES');
     const iAno     = hdr.findIndex(h => h === 'ANO');
@@ -96,7 +107,7 @@ function parseWorkbook(buf) {
     const iTotal   = hdr.findIndex((h,i) => i > (iQtd>0?iQtd:iVal) && h === 'TOTAL');
     const iPago    = hdr.findIndex(h => h.startsWith('PAGO') || h.startsWith('RECEBIDO'));
 
-    for (let r = 1; r < rows.length; r++) {
+    for (let r = hdrRowIdx + 1; r < rows.length; r++) {
       const row = rows[r];
       if (!row || row[iMes] == null) continue;
       const mes    = safeInt(row[iMes]);
@@ -124,21 +135,44 @@ function parseWorkbook(buf) {
   const MESES_PT = ['JANEIRO','FEVEREIRO','MARÇO','ABRIL','MAIO','JUNHO','JULHO','AGOSTO','SETEMBRO','OUTUBRO','NOVEMBRO','DEZEMBRO'];
   if (wb.SheetNames.includes('DESPESAS')) {
     const rows = XLSX.utils.sheet_to_json(wb.Sheets['DESPESAS'], { header: 1, defval: null });
+    // Detectar o cabeçalho de DESPESAS (linha com MÊS, ENTRADAS, ENERGIA...)
+    let despHdrIdx = -1;
+    let despHdr = [];
+    for (let ri = 0; ri < Math.min(rows.length, 5); ri++) {
+      const candidate = rows[ri].map(h => safeStr(h).toUpperCase());
+      if (candidate.includes('ENTRADAS') || candidate.includes('ENERGIA')) {
+        despHdrIdx = ri;
+        despHdr = candidate;
+        break;
+      }
+    }
+    const iDEnt  = despHdr.findIndex(h => h === 'ENTRADAS');
+    const iDEne  = despHdr.findIndex(h => h === 'ENERGIA');
+    const iDAgua = despHdr.findIndex(h => h === 'AGUA' || h === 'ÁGUA');
+    const iDInt  = despHdr.findIndex(h => h === 'INTERNET');
+    const iDDiar = despHdr.findIndex(h => h === 'DIARISTAS' || h.startsWith('DIARI'));
+    const iDMan  = despHdr.findIndex(h => h.startsWith('MANUT'));
+    const iDMat  = despHdr.findIndex(h => h === 'MATERIAIS');
+    const iDGuia = despHdr.findIndex(h => h.startsWith('GUIA'));
+    const iDPro  = despHdr.findIndex(h => h.startsWith('PRO'));
     for (const row of rows) {
       if (!row || row[0] == null) continue;
       const nome = safeStr(row[0]).toUpperCase();
       if (!MESES_PT.includes(nome)) continue;
-      const entradas = safeFloat(row[1]);
-      const energia  = safeFloat(row[2]);
-      const agua     = safeFloat(row[3]);
-      const internet = safeFloat(row[4]);
-      const diaris   = safeFloat(row[5]);
-      const manut    = safeFloat(row[6]);
-      const mats     = safeFloat(row[7]);
-      const guia     = safeFloat(row[8]);
-      const prolabore= safeFloat(row[9]);
+      const entradas = iDEnt  >= 0 ? safeFloat(row[iDEnt])  : safeFloat(row[1]);
+      const energia  = iDEne  >= 0 ? safeFloat(row[iDEne])  : safeFloat(row[2]);
+      const agua     = iDAgua >= 0 ? safeFloat(row[iDAgua]) : safeFloat(row[3]);
+      const internet = iDInt  >= 0 ? safeFloat(row[iDInt])  : safeFloat(row[4]);
+      const diaris   = iDDiar >= 0 ? safeFloat(row[iDDiar]) : safeFloat(row[5]);
+      const manut    = iDMan  >= 0 ? safeFloat(row[iDMan])  : safeFloat(row[6]);
+      const mats     = iDMat  >= 0 ? safeFloat(row[iDMat])  : safeFloat(row[7]);
+      const guia     = iDGuia >= 0 ? safeFloat(row[iDGuia]) : safeFloat(row[8]);
+      const prolabore= iDPro  >= 0 ? safeFloat(row[iDPro])  : safeFloat(row[9]);
       const totalD   = energia+agua+internet+diaris+manut+mats+guia+prolabore;
-      despesas.push({ mes: nome, entradas, energia, agua, internet, diaristas: diaris, manut, materiais: mats, guia, prolabore, total_despesas: totalD });
+      // Evitar duplicatas: pular se já existe o mesmo mês
+      if (!despesas.find(d => d.mes === nome)) {
+        despesas.push({ mes: nome, entradas, energia, agua, internet, diaristas: diaris, manut, materiais: mats, guia, prolabore, total_despesas: totalD });
+      }
     }
   }
 
@@ -164,23 +198,41 @@ function parseWorkbook(buf) {
   }
 
   // ── LEVANTAMENTO ─────────────────────────────────────────────────────────
-  if (wb.SheetNames.includes('LEVANTAMENTO')) {
-    const rows = XLSX.utils.sheet_to_json(wb.Sheets['LEVANTAMENTO'], { header: 1, defval: null });
-    for (let i = 1; i < rows.length; i++) {
+  // Tentar 'LEVANTAMENTO 2025' primeiro (mais completo), depois 'LEVANTAMENTO'
+  const levSheetName = wb.SheetNames.includes('LEVANTAMENTO 2025') ? 'LEVANTAMENTO 2025' : 'LEVANTAMENTO';
+  if (wb.SheetNames.includes(levSheetName)) {
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[levSheetName], { header: 1, defval: null });
+    // Detectar cabeçalho
+    let levHdrIdx = 0;
+    for (let ri = 0; ri < Math.min(rows.length, 3); ri++) {
+      const candidate = rows[ri].map(h => safeStr(h).toUpperCase());
+      if (candidate.some(h => h.includes('GANHO') || h === 'MESES')) {
+        levHdrIdx = ri;
+        break;
+      }
+    }
+    const levHdr = rows[levHdrIdx].map(h => safeStr(h).toUpperCase());
+    const iLGanhos = levHdr.findIndex(h => h.includes('GANHO'));
+    const iLDiar   = levHdr.findIndex(h => h.includes('DIARI'));
+    const iLDesp   = levHdr.findIndex(h => h.includes('DESP'));
+    const iLLucFac = levHdr.findIndex(h => h.includes('FACÇ') || h.includes('FACCAO') || h.includes('LUCRO'));
+    const iLPagFac = levHdr.findIndex((h,i) => i > iLLucFac && (h.includes('PAGO') || h.includes('FACÇÃO')));
+    const iLLiq    = levHdr.findIndex((h,i) => i > iLPagFac && (h.includes('GANHO') || h.includes('LIQ') || h.includes('REAL')));
+    for (let i = levHdrIdx + 1; i < rows.length; i++) {
       const row = rows[i];
       if (!row || !row[0]) continue;
       const nome = safeStr(row[0]).toUpperCase();
       if (!MESES_PT.includes(nome)) continue;
-      const ganhos = safeFloat(row[1]);
+      const ganhos = iLGanhos >= 0 ? safeFloat(row[iLGanhos]) : safeFloat(row[1]);
       if (ganhos > 0) {
         levantamento.push({
           mes: nome,
           ganhos,
-          diarias_val: safeFloat(row[2]),
-          desp_fix:    safeFloat(row[3]),
-          lucro_fac:   (row[4] == null || row[4] === '-') ? 0 : safeFloat(row[4]),
-          pago_fac:    (row[5] == null || row[5] === '-') ? 0 : safeFloat(row[5]),
-          ganhos_liq:  (row[6] == null || row[6] === '-') ? 0 : safeFloat(row[6])
+          diarias_val: iLDiar   >= 0 ? safeFloat(row[iLDiar])   : safeFloat(row[2]),
+          desp_fix:    iLDesp   >= 0 ? safeFloat(row[iLDesp])   : safeFloat(row[3]),
+          lucro_fac:   iLLucFac >= 0 ? (row[iLLucFac] == null || row[iLLucFac] === '-' ? 0 : safeFloat(row[iLLucFac])) : 0,
+          pago_fac:    iLPagFac >= 0 ? (row[iLPagFac] == null || row[iLPagFac] === '-' ? 0 : safeFloat(row[iLPagFac])) : 0,
+          ganhos_liq:  iLLiq    >= 0 ? (row[iLLiq]    == null || row[iLLiq]    === '-' ? 0 : safeFloat(row[iLLiq]))    : 0
         });
       }
     }
